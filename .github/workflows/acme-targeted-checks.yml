@@ -52,15 +52,26 @@ jobs:
             ruff check "${existing[@]}"
             ruff format --check "${existing[@]}"
           fi
-          # Test selection uses the checker and mappings from the base commit.
-          git show "$BASE_SHA:scripts/acme/check_change_scope.py" > /tmp/check_change_scope.py
-          python /tmp/check_change_scope.py \
-            --base "$BASE_SHA" --head HEAD --print-tests > /tmp/acme-targets.txt
-          mapfile -t targets < /tmp/acme-targets.txt
-          if ((${#targets[@]} == 0)); then
-            echo "No mapped tests for this diff"
-          elif printf '%s\n' "${targets[@]}" | grep -qx FALLBACK; then
-            SKIP_INTEGRATION=1 python -m unittest
+          # After this framework is on the default branch, select tests with the
+          # checker and mappings from the base commit. This introducing pull
+          # request is based on a commit that has neither interface. Skip mapped
+          # dialect tests only for that governance-only diff. A feature diff
+          # fails closed instead of skipping.
+          if git cat-file -e "$BASE_SHA:.github/acme/test-mappings.txt" 2>/dev/null \
+            && git grep -q -F -- '--print-tests' "$BASE_SHA" -- scripts/acme/check_change_scope.py
+          then
+            git show "$BASE_SHA:scripts/acme/check_change_scope.py" > /tmp/check_change_scope.py
+            python /tmp/check_change_scope.py \
+              --base "$BASE_SHA" --head HEAD --print-tests > /tmp/acme-targets.txt
+            mapfile -t targets < /tmp/acme-targets.txt
+            if ((${#targets[@]} == 0)); then
+              echo "No mapped tests for this diff"
+            elif printf '%s\n' "${targets[@]}" | grep -qx FALLBACK; then
+              SKIP_INTEGRATION=1 python -m unittest
+            else
+              python -m unittest "${targets[@]}"
+            fi
           else
-            python -m unittest "${targets[@]}"
+            python scripts/acme/check_change_scope.py \
+              --base "$BASE_SHA" --head HEAD --migration-skip
           fi

@@ -182,6 +182,47 @@ class ChangeScopeTests(unittest.TestCase):
         self.assertEqual(allowed.returncode, 0, allowed.stderr)
         self.assertIn("Human review is still required", allowed.stdout)
 
+    def use_old_base(self) -> None:
+        self.git("rm", ".github/acme/test-mappings.txt")
+        self.commit("base without test selection")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+
+    def test_governance_migration_skips_mapped_tests(self) -> None:
+        self.use_old_base()
+        self.branch({"ACME_WORKFLOW.md": "policy only\n"})
+        result = self.check("--migration-skip")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("skipping mapped dialect tests", result.stdout)
+        self.assertIn("governance-only", result.stdout)
+
+    def test_feature_change_fails_closed_without_base_test_selection(self) -> None:
+        self.use_old_base()
+        self.branch(
+            {
+                "ACME_WORKFLOW.md": "policy only\n",
+                "sqlglot/parsers/databricks.py": "changed = 1\n",
+                "tests/dialects/test_databricks.py": "changed = 1\n",
+            }
+        )
+        result = self.check("--migration-skip")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("sqlglot/parsers/databricks.py", result.stderr)
+        self.assertIn("tests/dialects/test_databricks.py", result.stderr)
+        self.assertIn("Refusing to skip tests", result.stderr)
+        self.assertNotIn("skipping mapped dialect tests", result.stdout)
+
+    def test_migration_skip_refuses_when_base_can_select_tests(self) -> None:
+        self.write("scripts/acme/check_change_scope.py", SCRIPT.read_text(encoding="utf-8"))
+        self.commit("base with test selection")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+        self.branch({"sqlglot/parsers/databricks.py": "changed = 1\n"})
+        refused = self.check("--migration-skip")
+        self.assertEqual(refused.returncode, 2, refused.stdout)
+        self.assertIn("--print-tests", refused.stderr)
+        selected = self.check("--print-tests")
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        self.assertEqual(selected.stdout.splitlines(), ["tests.dialects.test_databricks"])
+
     def test_unverifiable_git_reference_fails_closed(self) -> None:
         result = subprocess.run(
             [
@@ -218,7 +259,10 @@ class ChangeScopeTests(unittest.TestCase):
         self.assertIn("name: targeted-checks", targeted)
         self.assertIn('pip install -e ".[dev]"', targeted)
         self.assertIn("--print-tests", targeted)
+        self.assertIn("--migration-skip", targeted)
         self.assertIn('git show "$BASE_SHA:scripts/acme/check_change_scope.py"', targeted)
+        self.assertIn("python -m unittest tests.acme.test_check_change_scope", targeted)
+        self.assertIn("ruff check scripts/acme tests/acme", targeted)
         self.assertIn("python -m unittest tests.acme.test_check_change_scope", doc)
         self.assertIn(
             "python scripts/acme/check_change_scope.py --base origin/main --head HEAD",

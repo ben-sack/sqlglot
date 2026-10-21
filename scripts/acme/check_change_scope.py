@@ -16,6 +16,7 @@ import sys
 
 POLICY_ACTORS = frozenset({"OWNER", "MEMBER"})
 MAPPING_FILE = ".github/acme/test-mappings.txt"
+CHECKER_PATH = "scripts/acme/check_change_scope.py"
 PROTECTED_FILE = ".github/acme/protected-paths.txt"
 FALLBACK = "FALLBACK"
 MODULE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
@@ -181,6 +182,46 @@ def test_module(path: str) -> str | None:
     return module
 
 
+def base_has_test_selection(repo: str, base: str) -> bool:
+    script = git_show(repo, base, CHECKER_PATH)
+    mappings = git_show(repo, base, MAPPING_FILE)
+    return script is not None and "--print-tests" in script and mappings is not None
+
+
+def paths_requiring_mapped_tests(paths: list[str]) -> list[str]:
+    required: list[str] = []
+    for path in paths:
+        if is_protected(path, HARDCODED_PROTECTED):
+            continue
+        if (path.startswith("sqlglot/") and path.endswith(".py")) or test_module(path):
+            required.append(path)
+    return required
+
+
+def migration_skip(repo: str, base: str, head: str) -> str:
+    """Skip dialect selection only for a governance diff on a pre-mapping base.
+
+    A feature diff fails closed when that base cannot provide --print-tests and
+    test-mappings.txt. Later pull requests use the base checker instead.
+    """
+    paths = changed_paths(repo, base, head)
+    if base_has_test_selection(repo, base):
+        raise ScopeError(
+            "Trusted base can select tests. Run that checker's --print-tests instead of skipping.",
+            exit_code=2,
+        )
+    required = paths_requiring_mapped_tests(paths)
+    if required:
+        raise ScopeError(
+            "Trusted base has no test-mapping infrastructure. "
+            "Refusing to skip tests for a feature change:\n  " + "\n  ".join(required)
+        )
+    return (
+        "targeted-checks: base has no test mappings; "
+        "skipping mapped dialect tests for a governance-only diff"
+    )
+
+
 def select_tests(repo: str, base: str, head: str) -> list[str]:
     """Map a diff to unittest modules using the base commit's mapping file.
 
@@ -247,10 +288,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=os.environ.get("ACME_ACTOR", ""),
         help="GitHub author_association. Local use does not grant merge rights.",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--print-tests",
         action="store_true",
         help="Print unittest modules for this diff. FALLBACK means the unit suite.",
+    )
+    mode.add_argument(
+        "--migration-skip",
+        action="store_true",
+        help="Governance-only skip when the trusted base has no test-selection interface.",
     )
     return parser.parse_args(argv)
 
@@ -258,6 +305,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
+        if args.migration_skip:
+            print(migration_skip(args.repo, args.base, args.head))
+            return 0
         if args.print_tests:
             for module in select_tests(args.repo, args.base, args.head):
                 print(module)

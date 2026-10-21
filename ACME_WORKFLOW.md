@@ -61,6 +61,8 @@ A pull request that mixes a protected file with feature code fails, including fo
 
 This framework has to be on the default branch before `pull_request_target` can run it. The first merge is itself a policy change: an owner or member opens it, and a second maintainer reviews it. Until the workflow exists on the default branch, GitHub will not run `change-scope`. If branch protection already requires that check, an admin has to bypass it once for this introducing pull request.
 
+That introducing pull request is based on a commit that has neither `.github/acme/test-mappings.txt` nor `--print-tests`. `targeted-checks` still runs Ruff and `tests.acme.test_check_change_scope`. It skips mapped dialect selection only because the diff is governance-only. If that same base cannot select tests and the diff includes `sqlglot/**/*.py` or a test module outside `tests/acme/`, the job fails instead of skipping. After the merge, later pull requests select tests with the checker and mappings from the trusted base.
+
 After that, update governance only through a policy pull request:
 
 - Add or change a row in `.github/acme/test-mappings.txt`.
