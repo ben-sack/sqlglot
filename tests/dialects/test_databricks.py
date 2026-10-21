@@ -75,6 +75,23 @@ class TestDatabricks(Validator):
         quoted_table = self.validate_identity("DESCRIBE TABLE `detail`", "DESCRIBE `detail`")
         self.assertIsNone(quoted_table.args.get("style"))
         self.assertEqual(quoted_table.args.get("kind"), "TABLE")
+        for sql in (
+            "DESCRIBE detail PARTITION(ds = '2024-01-01')",
+            "DESCRIBE detail SUBPARTITION(ds = '2024-01-01')",
+            "DESCRIBE `detail` PARTITION(ds = '2024-01-01')",
+        ):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql)
+                self.assertIsNone(expression.args.get("style"))
+                self.assertIsNone(expression.args.get("kind"))
+                self.assertIsNotNone(expression.args.get("partition"))
+        table_partition = self.validate_identity(
+            "DESCRIBE TABLE detail PARTITION(ds = '2024-01-01')",
+            "DESCRIBE detail PARTITION(ds = '2024-01-01')",
+        )
+        self.assertIsNone(table_partition.args.get("style"))
+        self.assertEqual(table_partition.args.get("kind"), "TABLE")
+        self.assertIsNotNone(table_partition.args.get("partition"))
         for dialect in ("spark", "spark2", "hive"):
             with self.subTest(dialect=dialect):
                 with self.assertRaises(ParseError):
@@ -86,6 +103,7 @@ class TestDatabricks(Validator):
                 expression = self.validate_identity(sql)
                 self.assertIsInstance(expression, exp.Describe)
                 self.assertEqual(expression.args.get("style"), "DETAIL")
+                self.assertIsNone(expression.args.get("kind"))
         self.validate_identity("CREATE TABLE t (a STRUCT<c: MAP<STRING, STRING>>)")
         self.validate_identity("CREATE TABLE t (c STRUCT<interval: DOUBLE COMMENT 'aaa'>)")
         self.validate_identity("CREATE TABLE t (c STRING COMMENT 'Hello World')")

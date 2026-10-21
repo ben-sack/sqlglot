@@ -60,29 +60,43 @@ class DatabricksParser(SparkParser):
         TokenType.QDCOLON,
     }
 
-    def _parse_describe(self) -> exp.Describe:
-        # Unquoted DETAIL is the object name unless another object follows it.
-        # DESCRIBE detail and DESCRIBE TABLE detail predate the DETAIL style.
-        if not self._describe_detail_is_style():
-            return super()._parse_describe()
+    # Matched by the base describe parser before the table name, same as HISTORY.
+    # _match_texts declines the match when DETAIL is the table name instead.
+    DESCRIBE_STYLES: t.ClassVar = {
+        *SparkParser.DESCRIBE_STYLES,
+        "DETAIL",
+    }
 
-        self._match_text_seq("DETAIL")
-        this = super()._parse_describe()
-        this.set("style", "DETAIL")
-        return this
-
-    def _describe_detail_is_style(self) -> bool:
-        index = self._index
-        if self._match_set(self.CREATABLES) or not self._match_text_seq("DETAIL"):
-            self._retreat(index)
+    def _match_texts(self, texts: parser.TEXTS_TYPE, advance: bool = True) -> bool:
+        if texts is self.DESCRIBE_STYLES and self._detail_is_table_name():
             return False
+        return super()._match_texts(texts, advance)
 
-        has_object = bool(
-            self._match_set(self.STATEMENT_PARSERS, advance=False)
-            or self._parse_table_part(schema=True)
+    def _detail_is_table_name(self) -> bool:
+        # DETAIL names the table in DESCRIBE detail, DESCRIBE TABLE detail,
+        # DESCRIBE detail.tbl, and DESCRIBE detail PARTITION (...). It is the
+        # style when a table target follows and no creatable kind already did.
+        token = self._curr
+        if token.token_type in self.TEXT_MATCH_EXCLUDED_TOKENS or token.text.upper() != "DETAIL":
+            return False
+        if self._prev.token_type in self.CREATABLES:
+            return True
+
+        nxt = self._next
+        if nxt.token_type in (TokenType.SENTINEL, TokenType.DOT):
+            return True
+        if (
+            nxt.token_type not in self.TEXT_MATCH_EXCLUDED_TOKENS
+            and nxt.text.upper() in self.PARTITION_KEYWORDS
+            and self._index + 2 < self._tokens_size
+            and self._tokens[self._index + 2].token_type == TokenType.L_PAREN
+        ):
+            return True
+        return not (
+            nxt.token_type in self.ID_VAR_TOKENS
+            or nxt.token_type
+            in (TokenType.IDENTIFIER, TokenType.STRING, TokenType.PLACEHOLDER, TokenType.PARAMETER)
         )
-        self._retreat(index)
-        return has_object
 
     def _parse_curdate(self) -> exp.CurrentDate:
         # CURDATE, an alias for CURRENT_DATE, has optional parentheses
