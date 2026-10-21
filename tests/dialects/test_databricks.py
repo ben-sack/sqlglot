@@ -1,4 +1,4 @@
-from sqlglot import exp, transpile, parse_one
+from sqlglot import exp, parse_one, transpile
 from sqlglot.errors import ParseError
 from tests.dialects.test_dialect import Validator
 
@@ -59,6 +59,19 @@ class TestDatabricks(Validator):
         self.validate_identity("ALTER TABLE labels ADD COLUMN label_score FLOAT")
         self.validate_identity("DESCRIBE HISTORY a.b")
         self.validate_identity("DESCRIBE history.tbl")
+        detail_table = self.validate_identity("DESCRIBE detail.tbl")
+        self.assertIsNone(detail_table.args.get("style"))
+        for dialect in ("spark", "spark2", "hive"):
+            with self.subTest(dialect=dialect):
+                with self.assertRaises(ParseError):
+                    parse_one("DESCRIBE DETAIL my_table", read=dialect)
+                with self.assertRaises(ParseError):
+                    parse_one("DESCRIBE DETAIL schema.my_table", read=dialect)
+        for sql in ("DESCRIBE DETAIL my_table", "DESCRIBE DETAIL schema.my_table"):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql)
+                self.assertIsInstance(expression, exp.Describe)
+                self.assertEqual(expression.args.get("style"), "DETAIL")
         self.validate_identity("CREATE TABLE t (a STRUCT<c: MAP<STRING, STRING>>)")
         self.validate_identity("CREATE TABLE t (c STRUCT<interval: DOUBLE COMMENT 'aaa'>)")
         self.validate_identity("CREATE TABLE t (c STRING COMMENT 'Hello World')")

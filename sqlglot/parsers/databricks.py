@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing as t
+
 from sqlglot import exp, parser
 from sqlglot.dialects.dialect import build_date_delta, build_formatted_time
 from sqlglot.helper import seq_get
@@ -13,7 +15,12 @@ class DatabricksParser(SparkParser):
     COLON_IS_VARIANT_EXTRACT = True
     COLON_CHAIN_IS_SINGLE_EXTRACT = False
 
-    FUNCTIONS = {
+    DESCRIBE_STYLES: t.ClassVar = {
+        *SparkParser.DESCRIBE_STYLES,
+        "DETAIL",
+    }
+
+    FUNCTIONS: t.ClassVar[dict[str, t.Callable]] = {
         **SparkParser.FUNCTIONS,
         "IFF": exp.If.from_arg_list,
         "GETDATE": exp.CurrentTimestamp.from_arg_list,
@@ -26,12 +33,12 @@ class DatabricksParser(SparkParser):
         ),
     }
 
-    NO_PAREN_FUNCTION_PARSERS = {
+    NO_PAREN_FUNCTION_PARSERS: t.ClassVar = {
         **SparkParser.NO_PAREN_FUNCTION_PARSERS,
         "CURDATE": lambda self: self._parse_curdate(),
     }
 
-    FUNCTION_PARSERS = {
+    FUNCTION_PARSERS: t.ClassVar[dict[str, t.Callable]] = {
         **SparkParser.FUNCTION_PARSERS,
         "REGR_AVGX": lambda self: self._parse_distinct_arg_function(exp.RegrAvgx, distinct_index=1),
         "REGR_AVGY": lambda self: self._parse_distinct_arg_function(exp.RegrAvgy),
@@ -40,12 +47,12 @@ class DatabricksParser(SparkParser):
         "REGR_SYY": lambda self: self._parse_distinct_arg_function(exp.RegrSyy, distinct_index=1),
     }
 
-    FACTOR = {
+    FACTOR: t.ClassVar = {
         **SparkParser.FACTOR,
         TokenType.COLON: exp.JSONExtract,
     }
 
-    COLUMN_OPERATORS = {
+    COLUMN_OPERATORS: t.ClassVar = {
         **parser.Parser.COLUMN_OPERATORS,
         TokenType.QDCOLON: lambda self, this, to: self.build_cast(
             False,
@@ -53,7 +60,7 @@ class DatabricksParser(SparkParser):
             to=to,
         ),
     }
-    CAST_COLUMN_OPERATORS = {
+    CAST_COLUMN_OPERATORS: t.ClassVar = {
         *SparkParser.CAST_COLUMN_OPERATORS,
         TokenType.QDCOLON,
     }
