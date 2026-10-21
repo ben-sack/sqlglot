@@ -1,0 +1,10 @@
+# Extra protected paths. The checker also hardcodes a floor in
+# scripts/acme/check_change_scope.py. Entries here can add protection.
+# They cannot remove the floor. A trailing slash protects a directory.
+.github/acme/
+.github/workflows/acme-change-scope.yml
+.github/workflows/acme-targeted-checks.yml
+scripts/acme/
+tests/acme/
+.cursor/
+ACME_WORKFLOW.md

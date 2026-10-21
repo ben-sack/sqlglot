@@ -1,0 +1,98 @@
+name: Acme targeted checks
+
+# Quality checks for the pull request contents. This workflow is advisory as a
+# security boundary: pull_request runs the workflow file from the pull request,
+# so an author can edit it. Require the change-scope check to block unauthorized
+# files. Branch protection may also require this job, but that does not make it
+# tamper-proof.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-checks:
+    name: targeted-checks
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install SQLGlot and test dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Style the Acme guardrail
+        run: |
+          ruff check scripts/acme tests/acme
+          ruff format --check scripts/acme tests/acme
+
+      - name: Test the change-scope guardrail
+        run: python -m unittest tests.acme.test_check_change_scope
+
+      - name: Lint and run changed Python tests
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA"
+          mapfile -t changed < <(git diff --name-only "$BASE_SHA"...HEAD -- '*.py')
+          existing=()
+          modules=()
+          add_module() {
+            local module="$1"
+            local seen
+            if ((${#modules[@]} > 0)); then
+              for seen in "${modules[@]}"; do
+                if [[ "$seen" == "$module" ]]; then
+                  return
+                fi
+              done
+            fi
+            modules+=("$module")
+          }
+          for path in "${changed[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              continue
+            fi
+            existing+=("$path")
+            if [[ "$path" == tests/*.py || "$path" == tests/*/*.py ]]; then
+              module="${path%.py}"
+              add_module "${module//\//.}"
+            fi
+          done
+          # Pairings are read from the base commit. A listed production file
+          # schedules its test module even when that test file is not in the diff.
+          reqs=$(git ls-tree -r --name-only "$BASE_SHA" -- .github/acme/test-requirements || true)
+          if [[ -n "$reqs" ]]; then
+            while IFS= read -r req; do
+              [[ -n "$req" ]] || continue
+              while IFS= read -r line || [[ -n "$line" ]]; do
+                line="${line%%#*}"
+                read -r source testfile rest <<<"$line"
+                [[ -n "${source:-}" && -n "${testfile:-}" && -z "${rest:-}" ]] || continue
+                matched=0
+                for path in "${changed[@]}"; do
+                  if [[ "$path" == "$source" || "$path" == "$testfile" ]]; then
+                    matched=1
+                  fi
+                done
+                if [[ "$matched" == 1 ]]; then
+                  module="${testfile%.py}"
+                  add_module "${module//\//.}"
+                fi
+              done < <(git show "$BASE_SHA:$req")
+            done <<<"$reqs"
+          fi
+          if ((${#existing[@]})); then
+            ruff check "${existing[@]}"
+            ruff format --check "${existing[@]}"
+          fi
+          if ((${#modules[@]})); then
+            python -m unittest "${modules[@]}"
+          fi

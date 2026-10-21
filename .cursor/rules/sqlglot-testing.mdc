@@ -1,0 +1,21 @@
+---
+description: Dialect test patterns using validate_identity and validate_all
+globs:
+  - tests/**/*.py
+alwaysApply: false
+---
+
+# Dialect tests
+
+Source: SQLGlot (`tests/dialects/test_dialect.py`, `CONTRIBUTING.md`).
+
+`Validator.validate_identity` parses with `self.dialect` and expects `expression.sql(dialect=self.dialect)` to match. Pass `write_sql` when canonical SQL differs from the input.
+
+`validate_all` checks two directions: every `read` dialect transpiles to `sql`, and `sql` transpiles to every `write` dialect.
+
+- Put Spark cases in `tests/dialects/test_spark.py` and Databricks cases in `tests/dialects/test_databricks.py`.
+- Extend the existing test method that already holds the related assertions.
+- Add a regression for the nearby form that must stay unchanged, as `DESCRIBE HISTORY a.b` sits next to `DESCRIBE history.tbl`.
+- Run the targeted method: `python -m unittest tests.dialects.test_databricks.TestDatabricks.test_databricks`.
+
+Source: Acme policy. Test-first means the new assertion fails before the production edit. Dialect fixtures should be SQL that engine actually accepts. Do not add another dialect's test file unless that dialect's behavior is intended to change.

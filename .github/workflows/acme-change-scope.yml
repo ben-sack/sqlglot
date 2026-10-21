@@ -1,0 +1,39 @@
+name: Acme change scope
+
+# Enforced boundary. pull_request_target runs this file from the default branch,
+# so a pull request cannot edit the check and then run the edited copy.
+# The job reads policy from the base commit and does not execute pull request code.
+# Blocking merge still requires branch protection with this check set to required.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  change-scope:
+    name: change-scope
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Fetch pull request head
+        run: |
+          git fetch --no-tags origin \
+            "pull/${{ github.event.pull_request.number }}/head:pr-head"
+
+      - name: Validate change scope
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          ACME_ACTOR: ${{ github.event.pull_request.author_association }}
+        run: |
+          python scripts/acme/check_change_scope.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head pr-head
