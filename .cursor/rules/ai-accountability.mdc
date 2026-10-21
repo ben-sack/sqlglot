@@ -17,4 +17,4 @@ Source: Acme policy.
 - An agent plans, writes the failing test, and stops for the human before widening scope.
 - Run `python scripts/acme/check_change_scope.py` against the trusted base before opening the pull request.
 - Do not treat `.cursor/rules/` or skills as a security boundary. They do not replace the scope check, CI, or human approval.
-- Do not edit the scope script, allowlists, or workflows inside a feature branch. Policy changes are a separate maintainer pull request.
+- Do not edit governance files on a feature branch. That includes `.github/workflows/`, `.github/acme/`, `scripts/acme/`, `tests/acme/`, `.cursor/`, and `ACME_WORKFLOW.md`. Those updates are a separate maintainer pull request.

@@ -1,2 +1,0 @@
-sqlglot/parsers/databricks.py
-tests/dialects/test_databricks.py

@@ -18,4 +18,4 @@ Source: SQLGlot (`tests/dialects/test_dialect.py`, `CONTRIBUTING.md`).
 - Add a regression for the nearby form that must stay unchanged, as `DESCRIBE HISTORY a.b` sits next to `DESCRIBE history.tbl`.
 - Run the targeted method: `python -m unittest tests.dialects.test_databricks.TestDatabricks.test_databricks`.
 
-Source: Acme policy. Test-first means the new assertion fails before the production edit. Dialect fixtures should be SQL that engine actually accepts. Do not add another dialect's test file unless that dialect's behavior is intended to change.
+Source: Acme policy. Test-first means a behavior change gets a failing assertion before the production edit. A refactor or doc change may not add a test; say so. CI maps `sqlglot/parsers/databricks.py` to `tests.dialects.test_databricks` and the Spark dialect files to `tests.dialects.test_spark`. Unmapped `sqlglot/**/*.py` changes run the unit suite. That mapping does not prove the new assertions are adequate.

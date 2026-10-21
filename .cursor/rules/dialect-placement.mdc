@@ -24,4 +24,4 @@ class DatabricksParser(SparkParser):
     }
 ```
 
-Source: Acme policy. Spark SQL and Databricks SQL are different allowlist targets. Official Spark syntax is the only reason to edit `SparkParser` for a Databricks issue. Hive and Spark 2 stay unchanged unless the issue names them.
+Source: Acme policy. Spark SQL and Databricks SQL stay separate unless official Spark syntax needs the same change. Do not edit `SparkParser` for a Databricks-only issue. Hive and Spark 2 stay unchanged unless the issue names them.
