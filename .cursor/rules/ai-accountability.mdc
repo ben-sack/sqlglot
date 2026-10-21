@@ -1,0 +1,20 @@
+---
+description: Human accountability for AI-assisted SQLGlot changes
+alwaysApply: true
+---
+
+# Human accountability
+
+Source: SQLGlot (`CONTRIBUTING.md`, "LLM-assisted contributions").
+
+- The author owns every line and must be able to explain why it is correct.
+- Disclose LLM use in the pull request.
+- New contributors open an issue with a reproducible example before a pull request.
+- Low-effort generated changes are closed without a detailed review.
+
+Source: Acme policy.
+
+- An agent plans, writes the failing test, and stops for the human before widening scope.
+- Run `python scripts/acme/check_change_scope.py` against the trusted base before opening the pull request.
+- Do not treat `.cursor/rules/` or skills as a security boundary. They do not replace the scope check, CI, or human approval.
+- Do not edit the scope script, allowlists, or workflows inside a feature branch. Policy changes are a separate maintainer pull request.

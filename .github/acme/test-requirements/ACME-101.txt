@@ -1,0 +1,4 @@
+# Pilot gate. Read from the trusted base by check_change_scope.py.
+# If the production file changes, the test file must change and still exist.
+# A test diff does not prove the assertions are adequate.
+sqlglot/parsers/databricks.py tests/dialects/test_databricks.py

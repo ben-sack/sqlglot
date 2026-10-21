@@ -1,0 +1,22 @@
+---
+description: Reuse AST expressions and follow SQLGlot generator method conventions
+globs:
+  - sqlglot/expressions/**/*.py
+  - sqlglot/generators/**/*.py
+  - sqlglot/parser.py
+  - sqlglot/generator.py
+alwaysApply: false
+---
+
+# AST reuse and generation
+
+Source: SQLGlot (`posts/ast_primer.md`, `posts/onboarding.md`).
+
+- There is one expression type for all dialects. Search `sqlglot/expressions/` before adding a node.
+- `exp.Anonymous` is for functions with no expression class. `exp.func("NAME", ...)` selects the class when one exists.
+- Build SQL with `self.func`, `self.sql`, `rename_func`, or `exp.cast`. Do not assemble SQL with f-strings.
+- A generator method named `<lowercase_expr_name>_sql` is picked up automatically. Use `TRANSFORMS` for one-liners such as `rename_func("OTHER")`. If both exist, `TRANSFORMS` wins.
+- Unparsed statements stay `exp.Command` and are emitted unchanged. Do not guess a tree for syntax the issue did not specify.
+- Prefer an existing node argument, such as `exp.Describe.style`, over a new class.
+
+Source: Acme policy. A new expression file is a separate change, not something to fold into a dialect fix.

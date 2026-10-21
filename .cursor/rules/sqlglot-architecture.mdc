@@ -1,0 +1,23 @@
+---
+description: SQLGlot compiler pipeline and dialect inheritance
+alwaysApply: true
+---
+
+# Architecture
+
+Source: SQLGlot (`posts/onboarding.md`, `posts/ast_primer.md`). Acme did not invent this pipeline.
+
+Transpilation is tokenizer → parser → one shared AST → generator.
+
+- Tokenizer: `sqlglot/tokens.py`, `sqlglot/tokenizer_core.py`. Token changes also belong in `sqlglotrs/tokenizer.rs`.
+- Parser: recursive descent in `sqlglot/parser.py`. Dialects override; they do not add a second parser style.
+- AST: `sqlglot/expressions/`. Nodes store semantics. Keywords implied by the node are not kept as text.
+- Generator: `sqlglot/generator.py`. `TRANSFORMS` wins over an `<expr>_sql` method when both exist.
+
+Dialect chain for this fork's Spark work:
+
+`Hive` → `Spark2` → `Spark` → `Databricks`
+
+Shells live in `sqlglot/dialects/`. Parsers, generators, and typing metadata live in `sqlglot/parsers/`, `sqlglot/generators/`, and `sqlglot/typing/`. Optimizer and lineage are out of scope unless the issue asks for them.
+
+Source: Acme policy. Do not propose a Pratt parser. SQLGlot keeps recursive descent on purpose.

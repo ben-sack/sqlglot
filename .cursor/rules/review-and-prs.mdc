@@ -1,0 +1,16 @@
+---
+description: Small pull requests and SQLGlot review expectations
+alwaysApply: true
+---
+
+# Review and pull requests
+
+Source: SQLGlot (`CONTRIBUTING.md`).
+
+- One well-defined change per pull request. Conventional Commits for the title.
+- Behavior needs a test. API changes need a docstring update.
+- A maintainer reviews the pull request. "An LLM wrote it" does not answer a review question.
+- Agent-authored titles and commit messages end with the model name.
+- Write the description yourself: what changed, why, and how it was tested.
+
+Source: Acme policy. The diff must match the issue allowlist. Unrelated refactors, extra dialects, and drive-by cleanups are separate issues. Cursor rules are advisory. The scope check is the enforceable boundary.

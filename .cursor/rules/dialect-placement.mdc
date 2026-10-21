@@ -1,0 +1,27 @@
+---
+description: Put dialect behavior at the narrowest parser, generator, or dialect layer
+globs:
+  - sqlglot/dialects/**/*.py
+  - sqlglot/parsers/**/*.py
+  - sqlglot/generators/**/*.py
+  - sqlglot/typing/**/*.py
+alwaysApply: false
+---
+
+# Narrowest dialect layer
+
+Source: SQLGlot (`posts/onboarding.md`). Shared syntax goes in the base parser, generator, or the lowest dialect that actually implements it. A child dialect inherits it.
+
+- Databricks-only syntax: `sqlglot/parsers/databricks.py` or `sqlglot/generators/databricks.py`. `UNIFORM` and `TIMESERIES` are the pattern.
+- Spark 3+ syntax that Databricks should inherit: `sqlglot/parsers/spark.py` or `sqlglot/generators/spark.py`.
+- Do not add a dialect flag to `sqlglot/parser.py` when only one dialect needs it.
+
+```python
+class DatabricksParser(SparkParser):
+    FUNCTIONS = {
+        **SparkParser.FUNCTIONS,
+        "UNIFORM": lambda args: exp.Uniform(...),
+    }
+```
+
+Source: Acme policy. Spark SQL and Databricks SQL are different allowlist targets. Official Spark syntax is the only reason to edit `SparkParser` for a Databricks issue. Hive and Spark 2 stay unchanged unless the issue names them.
