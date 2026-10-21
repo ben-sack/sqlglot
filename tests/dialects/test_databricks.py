@@ -61,6 +61,20 @@ class TestDatabricks(Validator):
         self.validate_identity("DESCRIBE history.tbl")
         detail_table = self.validate_identity("DESCRIBE detail.tbl")
         self.assertIsNone(detail_table.args.get("style"))
+        bare_detail = self.validate_identity("DESCRIBE detail")
+        self.assertIsNone(bare_detail.args.get("style"))
+        self.assertIsNone(bare_detail.args.get("kind"))
+        for sql in ("DESCRIBE TABLE detail", "DESC TABLE detail"):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql, "DESCRIBE detail")
+                self.assertIsNone(expression.args.get("style"))
+                self.assertEqual(expression.args.get("kind"), "TABLE")
+                self.assertEqual(expression.this.sql(dialect=self.dialect), "detail")
+        quoted_detail = self.validate_identity("DESCRIBE `detail`")
+        self.assertIsNone(quoted_detail.args.get("style"))
+        quoted_table = self.validate_identity("DESCRIBE TABLE `detail`", "DESCRIBE `detail`")
+        self.assertIsNone(quoted_table.args.get("style"))
+        self.assertEqual(quoted_table.args.get("kind"), "TABLE")
         for dialect in ("spark", "spark2", "hive"):
             with self.subTest(dialect=dialect):
                 with self.assertRaises(ParseError):

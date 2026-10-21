@@ -15,11 +15,6 @@ class DatabricksParser(SparkParser):
     COLON_IS_VARIANT_EXTRACT = True
     COLON_CHAIN_IS_SINGLE_EXTRACT = False
 
-    DESCRIBE_STYLES: t.ClassVar = {
-        *SparkParser.DESCRIBE_STYLES,
-        "DETAIL",
-    }
-
     FUNCTIONS: t.ClassVar[dict[str, t.Callable]] = {
         **SparkParser.FUNCTIONS,
         "IFF": exp.If.from_arg_list,
@@ -64,6 +59,30 @@ class DatabricksParser(SparkParser):
         *SparkParser.CAST_COLUMN_OPERATORS,
         TokenType.QDCOLON,
     }
+
+    def _parse_describe(self) -> exp.Describe:
+        # Unquoted DETAIL is the object name unless another object follows it.
+        # DESCRIBE detail and DESCRIBE TABLE detail predate the DETAIL style.
+        if not self._describe_detail_is_style():
+            return super()._parse_describe()
+
+        self._match_text_seq("DETAIL")
+        this = super()._parse_describe()
+        this.set("style", "DETAIL")
+        return this
+
+    def _describe_detail_is_style(self) -> bool:
+        index = self._index
+        if self._match_set(self.CREATABLES) or not self._match_text_seq("DETAIL"):
+            self._retreat(index)
+            return False
+
+        has_object = bool(
+            self._match_set(self.STATEMENT_PARSERS, advance=False)
+            or self._parse_table_part(schema=True)
+        )
+        self._retreat(index)
+        return has_object
 
     def _parse_curdate(self) -> exp.CurrentDate:
         # CURDATE, an alias for CURRENT_DATE, has optional parentheses
