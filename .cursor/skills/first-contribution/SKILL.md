@@ -1,62 +1,58 @@
 ---
 name: first-contribution
 description: >-
-  Guides a new engineer or Cursor agent through SQLGlot issue intake,
-  repository exploration, implementation planning, test-first development,
-  and validation. Use when starting a contribution, picking up an issue,
-  planning a change, or making a first edit in this repository.
+  Guides a new engineer or Cursor agent through SQLGlot issue investigation,
+  regression planning, implementation, validation, and handoff to independent
+  review. Use when starting a contribution, picking up an issue, planning a
+  change, or making a first edit in this repository.
 ---
 
 # First contribution
 
-Work one issue at a time. Do not implement from the issue title alone.
+Work one issue at a time. Do not implement from the issue title alone, and do not silently expand into an unrelated subsystem.
 
-## 1. Issue intake
+## 1. Investigate the issue
 
-Read the issue, including acceptance criteria, test plan, and the file boundary.
+Read the issue, including acceptance criteria and the test plan. Reproduce the current behavior with `parse_one` or an existing test before calling it a bug.
 
-- Record the issue id (`ACME-123`). The scope check looks for `Acme-Issue: ACME-123` in the pull request body, or that id alone in the title or branch name.
-- Read the allowlist at `.github/acme/allowlists/ACME-123.txt` on the trusted base branch. Those paths are the only feature files this issue may change.
-- If the allowlist is missing, stop and ask a maintainer. Do not invent a new allowlist on the feature branch.
+Read `CONTRIBUTING.md`, `posts/onboarding.md`, and `posts/ast_primer.md` when the issue touches parsing or generation. For Spark and Databricks, read the chain Hive, then Spark 2, then Spark, then Databricks.
 
-## 2. Explore
+## 2. Identify likely code changes and regression risks
 
-Read `CONTRIBUTING.md`, `posts/onboarding.md`, and `posts/ast_primer.md` when the issue touches parsing or generation.
+Name the narrowest layer that owns the behavior: base, Hive, Spark 2, Spark, or Databricks. Name the existing expression that already represents the syntax.
 
-Then read the dialect chain that owns the behavior. For Spark and Databricks that is Hive, then Spark 2, then Spark, then Databricks. Confirm the current behavior with `parse_one` or an existing test before calling it a bug.
+List the dialects that inherit that layer. A Databricks-only change that edits `sqlglot/parser.py` is a wider risk than a change in `sqlglot/parsers/databricks.py`.
 
-## 3. Plan
+## 3. Produce an implementation plan
 
 Write the plan before editing production code.
 
-- Name the narrowest layer: base, Hive, Spark 2, Spark, or Databricks.
-- Name the expression that already represents the syntax. Add a node only when none fits.
-- List the test method to extend and the assertions, including one unchanged neighboring form.
-- List files. Every feature file must already be on the issue allowlist. Protected policy paths cannot be added to that list.
+- Files you expect to change, and why each one is in scope.
+- Test method to extend, using `validate_identity` or `validate_all`, plus one neighboring assertion that must stay unchanged.
+- Governance files you will not touch: `.github/workflows/`, `.github/acme/`, `scripts/acme/`, `tests/acme/`, `.cursor/`, and `ACME_WORKFLOW.md`.
 
-Stop if the plan needs a file outside the allowlist.
+Source: SQLGlot owns the parser, AST, and generator conventions. Source: Acme policy owns the protected paths and the mapped CI tests. There is no per-ticket file allowlist. Discovering one more file in the same subsystem during implementation is normal. Discovering that the fix belongs in another subsystem means stop and revise the plan in the open.
 
-## 4. Test first
+## 4. Implement and validate
 
-Add or extend assertions with `validate_identity` or `validate_all` in the existing dialect test. Run that test and confirm the new assertion fails for the reason in the issue.
+Prefer a failing test before the production edit when the issue changes behavior. Documentation and refactoring may not need a new test. Say which of those it is.
 
 ```bash
 python -m unittest tests.dialects.test_databricks.TestDatabricks.<method>
-```
-
-Use the dialect and method the issue names. Do not start the production edit while the new test is still green.
-
-## 5. Implement and validate
-
-Edit only the planned files. Keep the production change smaller than the test.
-
-```bash
-python -m unittest <targeted-test-module>
-python scripts/acme/check_change_scope.py --base origin/main --head HEAD --issue ACME-123
+python scripts/acme/check_change_scope.py --base origin/main --head HEAD
+python scripts/acme/check_change_scope.py --base origin/main --head HEAD --print-tests
 ruff check <changed-python-files>
 ruff format --check <changed-python-files>
 ```
 
-Fetch `origin/main` first so `--base` is the trusted branch. Commit the branch first. The checker does not see uncommitted files. A local `--policy-actor` flag does not authorize anything.
+Fetch `origin/main` first. Commit before the scope check. It compares commits and reads protected paths from the base. A local `--policy-actor` flag does not grant merge rights.
 
-The human author explains the diff, discloses LLM use, and opens the pull request. The agent does not merge.
+Run the unittest modules printed by `--print-tests`. `FALLBACK` means `SKIP_INTEGRATION=1 python -m unittest`.
+
+## 5. Explain any meaningful expansion in scope
+
+If the diff touches a file, dialect, or subsystem that the plan did not name, say what was learned and why the extra change is required. Do not leave that explanation for the reviewer to infer.
+
+## 6. Prepare the change for independent review
+
+Summarize the behavior change, the tests run, and any scope expansion. Disclose LLM use. The author owns the lines. Hand the diff to the pre-review skill or a human reviewer. Do not merge.

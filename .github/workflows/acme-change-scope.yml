@@ -29,9 +29,6 @@ jobs:
 
       - name: Validate change scope
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           ACME_ACTOR: ${{ github.event.pull_request.author_association }}
         run: |
           python scripts/acme/check_change_scope.py \

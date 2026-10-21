@@ -1,8 +1,7 @@
-"""Tests for the Acme change-scope guardrail."""
+"""Tests for repository-level Acme scope and test selection."""
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import subprocess
 import sys
@@ -15,22 +14,7 @@ SCRIPT = ROOT / "scripts" / "acme" / "check_change_scope.py"
 SCOPE_WORKFLOW = ROOT / ".github" / "workflows" / "acme-change-scope.yml"
 TARGETED_WORKFLOW = ROOT / ".github" / "workflows" / "acme-targeted-checks.yml"
 WORKFLOW_DOC = ROOT / "ACME_WORKFLOW.md"
-
-PERMITTED = (
-    "sqlglot/parsers/databricks.py",
-    "tests/dialects/test_databricks.py",
-)
-
-
-def load_checker():
-    spec = importlib.util.spec_from_file_location("check_change_scope", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-CHECKER = load_checker()
+MAPPINGS = ROOT / ".github" / "acme" / "test-mappings.txt"
 
 
 class ChangeScopeTests(unittest.TestCase):
@@ -50,15 +34,15 @@ class ChangeScopeTests(unittest.TestCase):
         self.git("init", "-b", "main", "--template=")
         self.write(
             ".github/acme/protected-paths.txt",
-            (ROOT / ".github/acme/protected-paths.txt").read_text(encoding="utf-8"),
+            (ROOT / ".github/acme/protected-paths.txt").read_text(),
         )
-        self.write(
-            ".github/acme/allowlists/ACME-101.txt",
-            "".join(f"{path}\n" for path in PERMITTED),
-        )
-        for path in PERMITTED:
-            self.write(path, "original = 1\n")
-        self.write("scripts/acme/check_change_scope.py", "# trusted checker\n")
+        self.write(".github/acme/test-mappings.txt", MAPPINGS.read_text(encoding="utf-8"))
+        self.write("sqlglot/parsers/databricks.py", "original = 1\n")
+        self.write("sqlglot/generators/databricks.py", "original = 1\n")
+        self.write("sqlglot/parsers/spark.py", "original = 1\n")
+        self.write("sqlglot/parser.py", "original = 1\n")
+        self.write("scripts/acme/check_change_scope.py", "original = 1\n")
+        self.write(".github/workflows/acme-change-scope.yml", "name: change-scope\n")
         self.commit("base")
         self.base = self.git("rev-parse", "HEAD").stdout.strip()
 
@@ -91,8 +75,7 @@ class ChangeScopeTests(unittest.TestCase):
 
     def check(self, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
-        for name in ("ACME_ACTOR", "PR_TITLE", "PR_BODY", "HEAD_REF"):
-            env.pop(name, None)
+        env.pop("ACME_ACTOR", None)
         return subprocess.run(
             [
                 sys.executable,
@@ -111,121 +94,181 @@ class ChangeScopeTests(unittest.TestCase):
             env=env,
         )
 
-    def pair_databricks_tests(self) -> None:
-        self.write(
-            ".github/acme/test-requirements/ACME-101.txt",
-            "sqlglot/parsers/databricks.py tests/dialects/test_databricks.py\n",
-        )
-        self.commit("pair")
-        self.base = self.git("rev-parse", "HEAD").stdout.strip()
-
-    def test_parser_change_without_test_change_fails(self) -> None:
-        self.pair_databricks_tests()
-        self.branch({"sqlglot/parsers/databricks.py": "changed = 1\n"})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn("Pilot test pairing failed", result.stderr)
-        self.assertIn("tests/dialects/test_databricks.py", result.stderr)
-
-    def test_parser_change_with_test_change_passes(self) -> None:
-        self.pair_databricks_tests()
-        self.branch({path: "changed = 1\n" for path in PERMITTED})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("change-scope: OK issue=ACME-101", result.stdout)
-
-    def test_unauthorized_file_still_rejected_when_pairing_is_present(self) -> None:
-        self.pair_databricks_tests()
-        self.branch({"sqlglot/parser.py": "changed = 1\n"})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("Unauthorized", result.stderr)
-        self.assertIn("sqlglot/parser.py", result.stderr)
-
-    def test_accepts_permitted_files(self) -> None:
-        self.branch({path: "changed = 1\n" for path in PERMITTED})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("change-scope: OK issue=ACME-101", result.stdout)
-
-    def test_rejects_unauthorized_file(self) -> None:
-        self.branch({"sqlglot/parser.py": "changed = 1\n"})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("sqlglot/parser.py", result.stderr)
-        self.assertIn("Unauthorized", result.stderr)
-
-    def test_rejects_protected_policy_file(self) -> None:
-        self.branch({".github/acme/allowlists/ACME-101.txt": "sqlglot/parser.py\n"})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn(".github/acme/allowlists/ACME-101.txt", result.stderr)
-        self.assertIn("Protected policy files", result.stderr)
-
-    def test_rejects_allowlist_bypass_on_head(self) -> None:
+    def test_feature_can_add_a_source_file_without_an_allowlist(self) -> None:
         self.branch(
             {
-                ".github/acme/allowlists/ACME-101.txt": "sqlglot/parser.py\n",
-                "sqlglot/parser.py": "changed = 1\n",
+                "sqlglot/parsers/databricks.py": "changed = 1\n",
+                "sqlglot/generators/databricks.py": "changed = 1\n",
             }
         )
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn("sqlglot/parser.py", result.stderr)
-        self.assertIn(".github/acme/allowlists/ACME-101.txt", result.stderr)
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("change-scope: OK feature files=2", result.stdout)
+        self.assertFalse((ROOT / ".github/acme/allowlists/ACME-101.txt").exists())
 
-    def test_rejects_protected_path_even_when_allowlisted(self) -> None:
-        self.write(
-            ".github/acme/allowlists/ACME-101.txt",
-            "sqlglot/parsers/databricks.py\nscripts/acme/check_change_scope.py\n",
-        )
-        self.commit("bad allowlist")
-        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+    def test_databricks_parser_selects_databricks_tests(self) -> None:
         self.branch({"sqlglot/parsers/databricks.py": "changed = 1\n"})
-        result = self.check("--issue", "ACME-101")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("grants protected path scripts/acme/check_change_scope.py", result.stderr)
+        result = self.check("--print-tests")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ["tests.dialects.test_databricks"])
 
-    def test_policy_change_requires_maintainer_and_still_asks_for_review(self) -> None:
-        self.branch({".github/acme/allowlists/ACME-102.txt": "README.md\n"})
-        denied = self.check("--issue", "ACME-102")
+    def test_spark_parser_selects_spark_tests(self) -> None:
+        self.branch({"sqlglot/parsers/spark.py": "changed = 1\n"})
+        result = self.check("--print-tests")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ["tests.dialects.test_spark"])
+
+    def test_unmapped_production_change_uses_fallback(self) -> None:
+        self.branch({"sqlglot/parser.py": "changed = 1\n"})
+        result = self.check("--print-tests")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "FALLBACK")
+
+    def test_changed_test_module_is_selected(self) -> None:
+        self.write("tests/dialects/test_databricks.py", "original = 1\n")
+        self.commit("add test")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+        self.branch({"tests/dialects/test_databricks.py": "changed = 1\n"})
+        result = self.check("--print-tests")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("tests.dialects.test_databricks", result.stdout.splitlines())
+
+    def test_feature_pr_cannot_modify_any_codeowners_file(self) -> None:
+        self.write(".github/acme/protected-paths.txt", "# extra paths removed\n")
+        self.commit("rely on hardcoded floor")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+        for path in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"):
+            with self.subTest(path=path):
+                self.git("checkout", "-B", "feature", self.base)
+                self.write("sqlglot/parsers/databricks.py", "changed = 1\n")
+                self.write(path, "* @acme/owners\n")
+                self.commit("feature")
+                result = self.check()
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(f"Protected:\n  {path}", result.stderr)
+                self.assertIn("Mixed policy and feature changes", result.stderr)
+                self.assertNotIn("change-scope: OK", result.stdout)
+
+    def test_feature_pr_cannot_modify_protected_ci(self) -> None:
+        self.branch(
+            {
+                "sqlglot/parsers/databricks.py": "changed = 1\n",
+                ".github/workflows/acme-change-scope.yml": "name: disabled\n",
+            }
+        )
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(".github/workflows/acme-change-scope.yml", result.stderr)
+        self.assertIn("Mixed policy and feature changes", result.stderr)
+
+    def test_feature_pr_cannot_weaken_the_checker(self) -> None:
+        self.branch(
+            {
+                "scripts/acme/check_change_scope.py": "import sys\nsys.exit(0)\n",
+                "sqlglot/parsers/databricks.py": "changed = 1\n",
+            }
+        )
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("scripts/acme/check_change_scope.py", result.stderr)
+        self.assertNotIn("change-scope: OK", result.stdout)
+
+    def test_policy_only_change_remains_possible_for_a_maintainer(self) -> None:
+        self.branch({".github/acme/test-mappings.txt": MAPPINGS.read_text(encoding="utf-8") + "\n"})
+        denied = self.check()
         self.assertEqual(denied.returncode, 1)
-        allowed = self.check("--issue", "ACME-102", "--policy-actor", "MEMBER")
+        self.assertIn("Protected governance files", denied.stderr)
+        allowed = self.check("--policy-actor", "MEMBER")
         self.assertEqual(allowed.returncode, 0, allowed.stderr)
         self.assertIn("Human review is still required", allowed.stdout)
 
-    def test_repository_allowlist_is_exact(self) -> None:
-        text = (ROOT / ".github/acme/allowlists/ACME-101.txt").read_text(encoding="utf-8")
-        self.assertEqual(CHECKER.strip_entries(text), list(PERMITTED))
-        requirements = (ROOT / ".github/acme/test-requirements/ACME-101.txt").read_text(
-            encoding="utf-8"
-        )
-        self.assertEqual(
-            CHECKER.strip_entries(requirements),
-            ["sqlglot/parsers/databricks.py tests/dialects/test_databricks.py"],
-        )
-        for rule in CHECKER.HARDCODED_PROTECTED:
-            sample = rule if not rule.endswith("/") else f"{rule}owned-by-policy.txt"
-            self.assertTrue(CHECKER.is_protected(sample, CHECKER.HARDCODED_PROTECTED))
+    def use_old_base(self) -> None:
+        self.git("rm", ".github/acme/test-mappings.txt")
+        self.commit("base without test selection")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
 
-    def test_workflow_and_docs_name_the_enforced_command(self) -> None:
+    def test_governance_migration_skips_mapped_tests(self) -> None:
+        self.use_old_base()
+        self.branch({"ACME_WORKFLOW.md": "policy only\n"})
+        result = self.check("--migration-skip")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("skipping mapped dialect tests", result.stdout)
+        self.assertIn("governance-only", result.stdout)
+
+    def test_feature_change_fails_closed_without_base_test_selection(self) -> None:
+        self.use_old_base()
+        self.branch(
+            {
+                "ACME_WORKFLOW.md": "policy only\n",
+                "sqlglot/parsers/databricks.py": "changed = 1\n",
+                "tests/dialects/test_databricks.py": "changed = 1\n",
+            }
+        )
+        result = self.check("--migration-skip")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("sqlglot/parsers/databricks.py", result.stderr)
+        self.assertIn("tests/dialects/test_databricks.py", result.stderr)
+        self.assertIn("Refusing to skip tests", result.stderr)
+        self.assertNotIn("skipping mapped dialect tests", result.stdout)
+
+    def test_migration_skip_refuses_when_base_can_select_tests(self) -> None:
+        self.write("scripts/acme/check_change_scope.py", SCRIPT.read_text(encoding="utf-8"))
+        self.commit("base with test selection")
+        self.base = self.git("rev-parse", "HEAD").stdout.strip()
+        self.branch({"sqlglot/parsers/databricks.py": "changed = 1\n"})
+        refused = self.check("--migration-skip")
+        self.assertEqual(refused.returncode, 2, refused.stdout)
+        self.assertIn("--print-tests", refused.stderr)
+        selected = self.check("--print-tests")
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        self.assertEqual(selected.stdout.splitlines(), ["tests.dialects.test_databricks"])
+
+    def test_unverifiable_git_reference_fails_closed(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--repo",
+                self.repo,
+                "--base",
+                "does-not-exist",
+                "--head",
+                "HEAD",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unverifiable git reference", result.stderr)
+
+    def test_ticket_policy_files_are_gone_and_jobs_keep_their_names(self) -> None:
+        self.assertFalse((ROOT / ".github/acme/allowlists/ACME-101.txt").exists())
+        self.assertFalse((ROOT / ".github/acme/test-requirements/ACME-101.txt").exists())
+        self.assertIn(
+            "sqlglot/parsers/databricks.py tests.dialects.test_databricks", MAPPINGS.read_text()
+        )
         scope = SCOPE_WORKFLOW.read_text(encoding="utf-8")
         targeted = TARGETED_WORKFLOW.read_text(encoding="utf-8")
         doc = WORKFLOW_DOC.read_text(encoding="utf-8")
+        self.assertIn("name: change-scope", scope)
         self.assertIn("pull_request_target:", scope)
         self.assertIn("contents: read", scope)
         self.assertIn("github.event.pull_request.base.sha", scope)
         self.assertNotIn("github.event.pull_request.head.sha", scope)
-        self.assertIn("scripts/acme/check_change_scope.py", scope)
+        self.assertIn("name: targeted-checks", targeted)
         self.assertIn('pip install -e ".[dev]"', targeted)
-        self.assertIn(".github/acme/test-requirements", targeted)
-        self.assertIn("ruff check scripts/acme tests/acme", targeted)
+        self.assertIn("--print-tests", targeted)
+        self.assertIn("--migration-skip", targeted)
+        self.assertIn('git show "$BASE_SHA:scripts/acme/check_change_scope.py"', targeted)
         self.assertIn("python -m unittest tests.acme.test_check_change_scope", targeted)
+        self.assertIn("ruff check scripts/acme tests/acme", targeted)
         self.assertIn("python -m unittest tests.acme.test_check_change_scope", doc)
         self.assertIn(
-            "python scripts/acme/check_change_scope.py --base origin/main --head HEAD --issue ACME-123",
+            "python scripts/acme/check_change_scope.py --base origin/main --head HEAD",
             doc,
         )
+        self.assertNotIn("allowlists/ACME-101.txt", doc)
         self.assertIn("ruff check scripts/acme tests/acme", doc)
         self.assertIn("ruff format --check scripts/acme tests/acme", doc)
 

@@ -1,0 +1,16 @@
+# Repository test map. Read from the trusted base commit.
+# A line is a repo path, or a directory prefix ending in /, then a unittest module.
+# Exact paths win over a shorter prefix. Unmapped sqlglot/**/*.py files fall back
+# to the unit suite. This file does not decide whether a test assertion is adequate.
+sqlglot/parsers/databricks.py tests.dialects.test_databricks
+sqlglot/generators/databricks.py tests.dialects.test_databricks
+sqlglot/dialects/databricks.py tests.dialects.test_databricks
+sqlglot/typing/databricks.py tests.dialects.test_databricks
+sqlglot/parsers/spark.py tests.dialects.test_spark
+sqlglot/parsers/spark2.py tests.dialects.test_spark
+sqlglot/generators/spark.py tests.dialects.test_spark
+sqlglot/generators/spark2.py tests.dialects.test_spark
+sqlglot/dialects/spark.py tests.dialects.test_spark
+sqlglot/dialects/spark2.py tests.dialects.test_spark
+sqlglot/typing/spark.py tests.dialects.test_spark
+sqlglot/typing/spark2.py tests.dialects.test_spark

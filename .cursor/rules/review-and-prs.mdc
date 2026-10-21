@@ -13,4 +13,4 @@ Source: SQLGlot (`CONTRIBUTING.md`).
 - Agent-authored titles and commit messages end with the model name.
 - Write the description yourself: what changed, why, and how it was tested.
 
-Source: Acme policy. The diff must match the issue allowlist. Unrelated refactors, extra dialects, and drive-by cleanups are separate issues. Cursor rules are advisory. The scope check is the enforceable boundary.
+Source: Acme policy. There is no per-ticket file allowlist. A feature pull request may change the source and tests it discovers, and it must explain growth into another subsystem. It must not edit governance files. Cursor rules are advisory. The scope check is the enforceable boundary for those protected paths.
