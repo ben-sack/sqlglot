@@ -114,6 +114,16 @@ class TestDatabricks(Validator):
                     self.assertIsInstance(expression.this, exp.Table)
                     self.assertEqual(expression.this.db, "schema")
                     self.assertEqual(expression.this.name, "my_table")
+        desc_detail = self.validate_identity(
+            "DESC DETAIL schema.my_table",
+            "DESCRIBE DETAIL schema.my_table",
+        )
+        self.assertIsInstance(desc_detail, exp.Describe)
+        self.assertEqual(desc_detail.args.get("style"), "DETAIL")
+        self.assertIsNone(desc_detail.args.get("kind"))
+        self.assertIsInstance(desc_detail.this, exp.Table)
+        self.assertEqual(desc_detail.this.db, "schema")
+        self.assertEqual(desc_detail.this.name, "my_table")
         self.validate_identity("CREATE TABLE t (a STRUCT<c: MAP<STRING, STRING>>)")
         self.validate_identity("CREATE TABLE t (c STRUCT<interval: DOUBLE COMMENT 'aaa'>)")
         self.validate_identity("CREATE TABLE t (c STRING COMMENT 'Hello World')")
