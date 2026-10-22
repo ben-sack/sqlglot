@@ -95,7 +95,14 @@ class DatabricksParser(SparkParser):
         return not (
             nxt.token_type in self.ID_VAR_TOKENS
             or nxt.token_type
-            in (TokenType.IDENTIFIER, TokenType.STRING, TokenType.PLACEHOLDER, TokenType.PARAMETER)
+            in (
+                TokenType.IDENTIFIER,
+                TokenType.STRING,
+                TokenType.PLACEHOLDER,
+                TokenType.PARAMETER,
+                TokenType.L_BRACE,
+                TokenType.COLON,
+            )
         )
 
     def _parse_curdate(self) -> exp.CurrentDate:

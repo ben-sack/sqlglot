@@ -98,7 +98,13 @@ class TestDatabricks(Validator):
                     parse_one("DESCRIBE DETAIL my_table", read=dialect)
                 with self.assertRaises(ParseError):
                     parse_one("DESCRIBE DETAIL schema.my_table", read=dialect)
-        for sql in ("DESCRIBE DETAIL my_table", "DESCRIBE DETAIL schema.my_table"):
+        for sql in (
+            "DESCRIBE DETAIL my_table",
+            "DESCRIBE DETAIL schema.my_table",
+            "DESCRIBE DETAIL {name}",
+            "DESCRIBE DETAIL {db}.{tbl}",
+            "DESCRIBE DETAIL :foo",
+        ):
             with self.subTest(sql=sql):
                 expression = self.validate_identity(sql)
                 self.assertIsInstance(expression, exp.Describe)
