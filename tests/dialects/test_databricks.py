@@ -1,4 +1,4 @@
-from sqlglot import exp, transpile, parse_one
+from sqlglot import exp, parse_one, transpile
 from sqlglot.errors import ParseError
 from tests.dialects.test_dialect import Validator
 
@@ -59,6 +59,61 @@ class TestDatabricks(Validator):
         self.validate_identity("ALTER TABLE labels ADD COLUMN label_score FLOAT")
         self.validate_identity("DESCRIBE HISTORY a.b")
         self.validate_identity("DESCRIBE history.tbl")
+        detail_table = self.validate_identity("DESCRIBE detail.tbl")
+        self.assertIsNone(detail_table.args.get("style"))
+        bare_detail = self.validate_identity("DESCRIBE detail")
+        self.assertIsNone(bare_detail.args.get("style"))
+        self.assertIsNone(bare_detail.args.get("kind"))
+        for sql in ("DESCRIBE TABLE detail", "DESC TABLE detail"):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql, "DESCRIBE detail")
+                self.assertIsNone(expression.args.get("style"))
+                self.assertEqual(expression.args.get("kind"), "TABLE")
+                self.assertEqual(expression.this.sql(dialect=self.dialect), "detail")
+        quoted_detail = self.validate_identity("DESCRIBE `detail`")
+        self.assertIsNone(quoted_detail.args.get("style"))
+        quoted_table = self.validate_identity("DESCRIBE TABLE `detail`", "DESCRIBE `detail`")
+        self.assertIsNone(quoted_table.args.get("style"))
+        self.assertEqual(quoted_table.args.get("kind"), "TABLE")
+        for sql in (
+            "DESCRIBE detail PARTITION(ds = '2024-01-01')",
+            "DESCRIBE detail SUBPARTITION(ds = '2024-01-01')",
+            "DESCRIBE `detail` PARTITION(ds = '2024-01-01')",
+        ):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql)
+                self.assertIsNone(expression.args.get("style"))
+                self.assertIsNone(expression.args.get("kind"))
+                self.assertIsNotNone(expression.args.get("partition"))
+        table_partition = self.validate_identity(
+            "DESCRIBE TABLE detail PARTITION(ds = '2024-01-01')",
+            "DESCRIBE detail PARTITION(ds = '2024-01-01')",
+        )
+        self.assertIsNone(table_partition.args.get("style"))
+        self.assertEqual(table_partition.args.get("kind"), "TABLE")
+        self.assertIsNotNone(table_partition.args.get("partition"))
+        for dialect in ("spark", "spark2", "hive"):
+            with self.subTest(dialect=dialect):
+                with self.assertRaises(ParseError):
+                    parse_one("DESCRIBE DETAIL my_table", read=dialect)
+                with self.assertRaises(ParseError):
+                    parse_one("DESCRIBE DETAIL schema.my_table", read=dialect)
+        for sql in (
+            "DESCRIBE DETAIL my_table",
+            "DESCRIBE DETAIL schema.my_table",
+            "DESCRIBE DETAIL {name}",
+            "DESCRIBE DETAIL {db}.{tbl}",
+            "DESCRIBE DETAIL :foo",
+        ):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql)
+                self.assertIsInstance(expression, exp.Describe)
+                self.assertEqual(expression.args.get("style"), "DETAIL")
+                self.assertIsNone(expression.args.get("kind"))
+                if sql == "DESCRIBE DETAIL schema.my_table":
+                    self.assertIsInstance(expression.this, exp.Table)
+                    self.assertEqual(expression.this.db, "schema")
+                    self.assertEqual(expression.this.name, "my_table")
         self.validate_identity("CREATE TABLE t (a STRUCT<c: MAP<STRING, STRING>>)")
         self.validate_identity("CREATE TABLE t (c STRUCT<interval: DOUBLE COMMENT 'aaa'>)")
         self.validate_identity("CREATE TABLE t (c STRING COMMENT 'Hello World')")
